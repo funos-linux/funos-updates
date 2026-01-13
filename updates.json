@@ -1,0 +1,13 @@
+{
+  "version": "2026.01",
+  "updates": [
+    {
+      "id": "wallpaper-jakarta-night-2026-01",
+      "type": "wallpaper",
+      "description": "Add Jakarta City Night wallpaper",
+      "source": "wallpapers/2026-01",
+      "target": "/opt/artwork/wallpaper",
+      "requires_root": true
+    }
+  ]
+}
