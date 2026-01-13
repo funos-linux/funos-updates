@@ -1,13 +1,15 @@
 #!/bin/bash
 
+# Require root privileges
 if [ "$EUID" -ne 0 ]; then
   echo "This command must be run as root."
   echo "Please run: sudo funos-update"
   exit 1
 fi
 
+# Check dependencies
 if ! command -v jq >/dev/null 2>&1; then
-  echo "The 'jq' package is required but not installed."
+  echo "Missing dependency: jq"
   echo "Install it with: sudo apt install jq"
   exit 1
 fi
