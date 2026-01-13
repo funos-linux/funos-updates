@@ -1,5 +1,3 @@
----
-
 # funos-updates
 
 **funos-updates** is the official update repository for **FunOS**.
