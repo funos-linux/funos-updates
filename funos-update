@@ -6,6 +6,12 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+if ! command -v jq >/dev/null 2>&1; then
+  echo "The 'jq' package is required but not installed."
+  echo "Install it with: sudo apt install jq"
+  exit 1
+fi
+
 REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main"
 STATE_DIR="/var/lib/funos-update"
 STATE_FILE="$STATE_DIR/applied.json"
