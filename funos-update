@@ -1,0 +1,73 @@
+#!/bin/bash
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main"
+STATE_DIR="/var/lib/funos-update"
+STATE_FILE="$STATE_DIR/applied.json"
+TMP_DIR="/tmp/funos-update"
+
+mkdir -p "$STATE_DIR" "$TMP_DIR"
+
+# Initialize state file if missing
+if [ ! -f "$STATE_FILE" ]; then
+  echo '{ "applied": [] }' > "$STATE_FILE"
+fi
+
+echo "Checking for FunOS updates..."
+
+curl -fsSL "$REPO_URL/updates.json" -o "$TMP_DIR/updates.json" || {
+  echo "Failed to fetch update metadata."
+  exit 1
+}
+
+# Parse updates (using jq)
+UPDATES=$(jq -c '.updates[]' "$TMP_DIR/updates.json")
+
+for update in $UPDATES; do
+  ID=$(echo "$update" | jq -r '.id')
+  DESC=$(echo "$update" | jq -r '.description')
+  TYPE=$(echo "$update" | jq -r '.type')
+  SOURCE=$(echo "$update" | jq -r '.source')
+  TARGET=$(echo "$update" | jq -r '.target')
+  ROOT=$(echo "$update" | jq -r '.requires_root')
+
+  if jq -e ".applied[] | select(. == \"$ID\")" "$STATE_FILE" >/dev/null; then
+    continue
+  fi
+
+  echo
+  echo "Update available:"
+  echo " - $DESC"
+  read -rp "Apply this update? [y/N]: " ANSWER
+
+  if [[ "$ANSWER" =~ ^[Yy]$ ]]; then
+    echo "Applying update: $ID"
+
+    case "$TYPE" in
+      wallpaper|jwm-theme)
+        curl -fsSL "$REPO_URL/$SOURCE.tar.gz" -o "$TMP_DIR/$ID.tar.gz"
+        tar -xzf "$TMP_DIR/$ID.tar.gz" -C "$TMP_DIR"
+
+        if [ "$ROOT" = "true" ]; then
+          sudo cp -r "$TMP_DIR/$(basename "$SOURCE")"/* "$TARGET"
+        else
+          mkdir -p "${TARGET/#\~/$HOME}"
+          cp -r "$TMP_DIR/$(basename "$SOURCE")"/* "${TARGET/#\~/$HOME}"
+        fi
+        ;;
+      script)
+        curl -fsSL "$REPO_URL/$SOURCE" -o "$TMP_DIR/$ID.sh"
+        chmod +x "$TMP_DIR/$ID.sh"
+        "$TMP_DIR/$ID.sh"
+        ;;
+    esac
+
+    # Mark as applied
+    jq ".applied += [\"$ID\"]" "$STATE_FILE" > "$STATE_FILE.tmp"
+    mv "$STATE_FILE.tmp" "$STATE_FILE"
+
+    echo "Update applied successfully."
+  fi
+done
+
+echo
+echo "FunOS is up to date."
