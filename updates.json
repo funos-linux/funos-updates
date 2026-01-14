@@ -6,8 +6,7 @@
       "type": "wallpaper",
       "description": "Add Jakarta City Night wallpaper",
       "source": "wallpapers/2026-01",
-      "target": "/opt/artwork/wallpaper",
-      "requires_root": true
+      "target": "/opt/artwork/wallpaper"
     }
   ]
 }
