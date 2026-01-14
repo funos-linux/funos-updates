@@ -1,68 +1,41 @@
 #!/bin/bash
-set -euo pipefail
+set -e
 
-# =========================
-# FunOS Update Script
-# =========================
-
-# Require root privileges
-if [[ $EUID -ne 0 ]]; then
+# Must be run as root
+if [ "$EUID" -ne 0 ]; then
   echo "This command must be run as root."
   echo "Please run: sudo funos-update"
   exit 1
 fi
 
-# Check dependencies
-for cmd in curl jq tar; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Missing dependency: $cmd"
-    echo "Install it with: sudo apt install $cmd"
-    exit 1
-  fi
-done
+# Dependency check
+command -v jq >/dev/null 2>&1 || {
+  echo "Missing dependency: jq"
+  echo "Install it with: sudo apt install jq"
+  exit 1
+}
 
 REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main"
 STATE_DIR="/var/lib/funos-update"
 STATE_FILE="$STATE_DIR/applied.json"
-TMP_DIR="$(mktemp -d /tmp/funos-update.XXXXXX)"
+TMP_DIR="/tmp/funos-update"
 
-cleanup() {
-  rm -rf "$TMP_DIR"
-}
-trap cleanup EXIT
+mkdir -p "$STATE_DIR" "$TMP_DIR"
 
-mkdir -p "$STATE_DIR"
-
-# Initialize state file safely
-if [[ ! -f "$STATE_FILE" ]]; then
-  echo '{ "applied": [] }' > "$STATE_FILE"
-fi
+[ -f "$STATE_FILE" ] || echo '{ "applied": [] }' > "$STATE_FILE"
 
 echo "Checking for FunOS updates..."
 
-# Download metadata
-curl -fsSL "$REPO_URL/updates.json" -o "$TMP_DIR/updates.json" || {
-  echo "Failed to fetch update metadata."
-  exit 1
-}
+curl -fsSL "$REPO_URL/updates.json" -o "$TMP_DIR/updates.json"
 
-# Validate JSON
-jq empty "$TMP_DIR/updates.json" || {
-  echo "Invalid updates.json file."
-  exit 1
-}
-
-# Iterate updates safely (NO word-splitting)
 jq -c '.updates[]' "$TMP_DIR/updates.json" | while read -r update; do
-  ID=$(jq -r '.id' <<< "$update")
-  DESC=$(jq -r '.description' <<< "$update")
-  TYPE=$(jq -r '.type' <<< "$update")
-  SOURCE=$(jq -r '.source' <<< "$update")
-  TARGET=$(jq -r '.target' <<< "$update")
-  ROOT=$(jq -r '.requires_root' <<< "$update")
+  ID=$(jq -r '.id' <<<"$update")
+  DESC=$(jq -r '.description' <<<"$update")
+  TYPE=$(jq -r '.type' <<<"$update")
+  SOURCE=$(jq -r '.source' <<<"$update")
+  TARGET=$(jq -r '.target' <<<"$update")
 
-  # Skip already applied updates
-  if jq -e --arg id "$ID" '.applied[] == $id' "$STATE_FILE" >/dev/null; then
+  if jq -e ".applied[] | select(. == \"$ID\")" "$STATE_FILE" >/dev/null; then
     continue
   fi
 
@@ -71,48 +44,38 @@ jq -c '.updates[]' "$TMP_DIR/updates.json" | while read -r update; do
   echo " - $DESC"
   read -rp "Apply this update? [y/N]: " ANSWER
 
-  if [[ "$ANSWER" =~ ^[Yy]$ ]]; then
-    echo "Applying update: $ID"
+  [[ "$ANSWER" =~ ^[Yy]$ ]] || continue
 
-    case "$TYPE" in
-      wallpaper|jwm-theme)
-        ARCHIVE="$TMP_DIR/$ID.tar.gz"
+  echo "Applying update: $ID"
 
-        curl -fsSL "$REPO_URL/$SOURCE.tar.gz" -o "$ARCHIVE" || {
-          echo "Failed to download update archive."
-          exit 1
-        }
+  WORKDIR="$TMP_DIR/$ID"
+  rm -rf "$WORKDIR"
+  mkdir -p "$WORKDIR"
 
-        mkdir -p "$TMP_DIR/extract"
-        tar -xzf "$ARCHIVE" -C "$TMP_DIR/extract"
+  case "$TYPE" in
+    wallpaper|jwm-theme)
+      ARCHIVE="$TMP_DIR/$ID.tar.gz"
+      curl -fsSL "$REPO_URL/$SOURCE.tar.gz" -o "$ARCHIVE"
+      tar -xzf "$ARCHIVE" -C "$WORKDIR"
 
-        if [[ "$ROOT" == "true" ]]; then
-          mkdir -p "$TARGET"
-          cp -r "$TMP_DIR/extract/"* "$TARGET/"
-        else
-          USER_TARGET="${TARGET/#\~/$SUDO_USER_HOME}"
-          mkdir -p "$USER_TARGET"
-          cp -r "$TMP_DIR/extract/"* "$USER_TARGET/"
-        fi
-        ;;
-      script)
-        SCRIPT="$TMP_DIR/$ID.sh"
-        curl -fsSL "$REPO_URL/$SOURCE" -o "$SCRIPT"
-        chmod +x "$SCRIPT"
-        "$SCRIPT"
-        ;;
-      *)
-        echo "Unknown update type: $TYPE"
-        exit 1
-        ;;
-    esac
+      mkdir -p "$TARGET"
+      cp -av "$WORKDIR/"* "$TARGET/"
+      ;;
+    script)
+      curl -fsSL "$REPO_URL/$SOURCE" -o "$WORKDIR/run.sh"
+      chmod +x "$WORKDIR/run.sh"
+      "$WORKDIR/run.sh"
+      ;;
+    *)
+      echo "Unknown update type: $TYPE"
+      continue
+      ;;
+  esac
 
-    # Mark update as applied (atomic write)
-    jq --arg id "$ID" '.applied += [$id]' "$STATE_FILE" > "$STATE_FILE.tmp"
-    mv "$STATE_FILE.tmp" "$STATE_FILE"
+  jq ".applied += [\"$ID\"]" "$STATE_FILE" > "$STATE_FILE.tmp"
+  mv "$STATE_FILE.tmp" "$STATE_FILE"
 
-    echo "Update applied successfully."
-  fi
+  echo "Update applied successfully."
 done
 
 echo
