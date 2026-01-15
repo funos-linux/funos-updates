@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main"
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/24.04"
 STATE_DIR="/var/lib/funos-update"
 STATE_FILE="$STATE_DIR/update-version.txt"
 TMP_DIR="/tmp/funos-update"
