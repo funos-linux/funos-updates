@@ -1,82 +1,78 @@
 #!/bin/bash
 set -e
 
-# Must be run as root
-if [ "$EUID" -ne 0 ]; then
-  echo "This command must be run as root."
-  echo "Please run: sudo funos-update"
-  exit 1
-fi
-
-# Dependency check
-command -v jq >/dev/null 2>&1 || {
-  echo "Missing dependency: jq"
-  echo "Install it with: sudo apt install jq"
-  exit 1
-}
-
 REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main"
 STATE_DIR="/var/lib/funos-update"
-STATE_FILE="$STATE_DIR/applied.json"
+STATE_FILE="$STATE_DIR/update-version.txt"
 TMP_DIR="/tmp/funos-update"
+TMP_VERSION_FILE="$TMP_DIR/update-version.txt"
 
-mkdir -p "$STATE_DIR" "$TMP_DIR"
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root"
+    exit 1
+fi
 
-[ -f "$STATE_FILE" ] || echo '{ "applied": [] }' > "$STATE_FILE"
+# Ensure directories exist
+mkdir -p "$STATE_DIR"
+mkdir -p "$TMP_DIR"
 
-echo "Checking for FunOS updates..."
+# Ensure local state file exists
+if [ ! -f "$STATE_FILE" ]; then
+    echo 0 > "$STATE_FILE"
+fi
 
-curl -fsSL "$REPO_URL/updates.json" -o "$TMP_DIR/updates.json"
+# Download remote update version file
+echo "Checking for updates..."
+curl -fsSL "$REPO_URL/update-version.txt" -o "$TMP_VERSION_FILE"
 
-jq -c '.updates[]' "$TMP_DIR/updates.json" | while read -r update; do
-  ID=$(jq -r '.id' <<<"$update")
-  DESC=$(jq -r '.description' <<<"$update")
-  TYPE=$(jq -r '.type' <<<"$update")
-  SOURCE=$(jq -r '.source' <<<"$update")
-  TARGET=$(jq -r '.target' <<<"$update")
+# Read versions
+LOCAL_VERSION=$(cat "$STATE_FILE")
+REMOTE_VERSION=$(cat "$TMP_VERSION_FILE")
 
-  if jq -e ".applied[] | select(. == \"$ID\")" "$STATE_FILE" >/dev/null; then
-    continue
-  fi
+# Ensure numeric values
+if ! [[ "$LOCAL_VERSION" =~ ^[0-9]+$ && "$REMOTE_VERSION" =~ ^[0-9]+$ ]]; then
+    echo "Invalid version number"
+    exit 1
+fi
 
-  echo
-  echo "Update available:"
-  echo " - $DESC"
-  read -rp "Apply this update? [y/N]: " ANSWER
+# Compare versions
+if [ "$LOCAL_VERSION" -eq "$REMOTE_VERSION" ]; then
+    echo "No updates available"
+    rm -rf "$TMP_DIR"
+    exit 1
+fi
 
-  [[ "$ANSWER" =~ ^[Yy]$ ]] || continue
+if [ "$LOCAL_VERSION" -gt "$REMOTE_VERSION" ]; then
+    echo "Local version is newer than remote version (unexpected)"
+    rm -rf "$TMP_DIR"
+    exit 1
+fi
 
-  echo "Applying update: $ID"
+echo "Update available"
+echo "Updating from version $LOCAL_VERSION to $REMOTE_VERSION"
 
-  WORKDIR="$TMP_DIR/$ID"
-  rm -rf "$WORKDIR"
-  mkdir -p "$WORKDIR"
+# Run updates incrementally
+for (( i=LOCAL_VERSION+1; i<=REMOTE_VERSION; i++ )); do
+    UPDATE_FILE="new-update-$i"
+    UPDATE_PATH="$TMP_DIR/$UPDATE_FILE"
 
-  case "$TYPE" in
-    wallpaper|jwm-theme)
-      ARCHIVE="$TMP_DIR/$ID.tar.gz"
-      curl -fsSL "$REPO_URL/$SOURCE.tar.gz" -o "$ARCHIVE"
-      tar -xzf "$ARCHIVE" -C "$WORKDIR"
+    echo "Downloading $UPDATE_FILE..."
+    curl -fsSL "$REPO_URL/$UPDATE_FILE" -o "$UPDATE_PATH"
 
-      mkdir -p "$TARGET"
-      cp -av "$WORKDIR/"* "$TARGET/"
-      ;;
-    script)
-      curl -fsSL "$REPO_URL/$SOURCE" -o "$WORKDIR/run.sh"
-      chmod +x "$WORKDIR/run.sh"
-      "$WORKDIR/run.sh"
-      ;;
-    *)
-      echo "Unknown update type: $TYPE"
-      continue
-      ;;
-  esac
+    chmod +x "$UPDATE_PATH"
 
-  jq ".applied += [\"$ID\"]" "$STATE_FILE" > "$STATE_FILE.tmp"
-  mv "$STATE_FILE.tmp" "$STATE_FILE"
+    echo "Running $UPDATE_FILE..."
+    "$UPDATE_PATH"
 
-  echo "Update applied successfully."
+    echo "Update $i completed"
 done
 
-echo
-echo "FunOS is up to date."
+# Update local version
+echo "$REMOTE_VERSION" > "$STATE_FILE"
+
+# Cleanup temp directory
+echo "Cleaning up temporary files..."
+rm -rf "$TMP_DIR"
+
+echo "System successfully updated to version $REMOTE_VERSION"
