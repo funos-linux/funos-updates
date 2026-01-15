@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root"
+    exit 1
+fi
+
 REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main"
 TMP_DIR="/tmp/funos-update"
 WALLPAPER_DIR="/opt/artwork/wallpaper"
