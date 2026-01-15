@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main"
+TMP_DIR="/tmp/funos-update"
+WALLPAPER_DIR="/opt/artwork/wallpaper"
+
+curl -fsSL "$REPO_URL/24.04/new-update-1/new-update-1.tar.gz" -o "$TMP_DIR/new-update-1.tar.gz"
+tar -xzf "$TMP_DIR/new-update-1.tar.gz" -C "$WALLPAPER_DIR"
+rm -f "$TMP_DIR/new-update-1.tar.gz"
+
+echo "Update applied successfully."
+echo "FunOS is up to date."
