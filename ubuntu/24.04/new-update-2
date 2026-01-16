@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo "Please run as root"
+    exit 1
+fi
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/24.04"
+TMP_DIR="/tmp/funos-update"
+WALLPAPER_DIR="/opt/artwork/wallpaper"
+ARCHIVE="$TMP_DIR/new-update-2.tar.gz"
+
+# Ensure directories exist
+mkdir -p "$TMP_DIR"
+mkdir -p "$WALLPAPER_DIR"
+
+echo "Downloading update archive..."
+curl -fsSL "$REPO_URL/update-2/new-update-2.tar.gz" -o "$ARCHIVE"
+
+echo "Extracting wallpapers..."
+tar -xzf "$ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+
+echo "Cleaning up..."
+rm -f "$ARCHIVE"
+
+echo "Update 2 applied successfully."
