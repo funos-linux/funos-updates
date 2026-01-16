@@ -13,22 +13,26 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Ensure cleanup on exit or error
+cleanup() {
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
 # Ensure directories exist
 mkdir -p "$STATE_DIR"
 mkdir -p "$TMP_DIR"
 
 # Ensure local state file exists
-if [ ! -f "$STATE_FILE" ]; then
-    echo 0 > "$STATE_FILE"
-fi
+[ ! -f "$STATE_FILE" ] && echo 0 > "$STATE_FILE"
 
 # Download remote update version file
 echo "Checking for updates..."
 curl -fsSL "$REPO_URL/update-version.txt" -o "$TMP_VERSION_FILE"
 
 # Read versions
-LOCAL_VERSION=$(cat "$STATE_FILE")
-REMOTE_VERSION=$(cat "$TMP_VERSION_FILE")
+LOCAL_VERSION=$(<"$STATE_FILE")
+REMOTE_VERSION=$(<"$TMP_VERSION_FILE")
 
 # Ensure numeric values
 if ! [[ "$LOCAL_VERSION" =~ ^[0-9]+$ && "$REMOTE_VERSION" =~ ^[0-9]+$ ]]; then
@@ -39,13 +43,11 @@ fi
 # Compare versions
 if [ "$LOCAL_VERSION" -eq "$REMOTE_VERSION" ]; then
     echo "No updates available"
-    rm -rf "$TMP_DIR"
-    exit 1
+    exit 0
 fi
 
 if [ "$LOCAL_VERSION" -gt "$REMOTE_VERSION" ]; then
     echo "Local version is newer than remote version (unexpected)"
-    rm -rf "$TMP_DIR"
     exit 1
 fi
 
@@ -68,11 +70,7 @@ for (( i=LOCAL_VERSION+1; i<=REMOTE_VERSION; i++ )); do
     echo "Update $i completed"
 done
 
-# Update local version
+# Update local version only after success
 echo "$REMOTE_VERSION" > "$STATE_FILE"
-
-# Cleanup temp directory
-echo "Cleaning up temporary files..."
-rm -rf "$TMP_DIR"
 
 echo "System successfully updated to version $REMOTE_VERSION"
