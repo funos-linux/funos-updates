@@ -9,20 +9,69 @@ fi
 
 REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/24.04"
 TMP_DIR="/tmp/funos-update"
-WALLPAPER_DIR="/opt/artwork/wallpaper"
-ARCHIVE="$TMP_DIR/new-update-1.tar.gz"
 
-# Ensure directories exist
+WALLPAPER_DIR="/opt/artwork/wallpaper"
+WALLPAPER_ARCHIVE="$TMP_DIR/new-update-1-wallpaper.tar.gz"
+
+PLYMOUTH_THEME_DIR="/usr/share/plymouth/themes"
+PLYMOUTH_THEME_ARCHIVE="$TMP_DIR/new-update-1-plymouth-theme.tar.gz"
+FUNOS_THEME_DIR="$PLYMOUTH_THEME_DIR/funos-bgrt"
+
+echo "=== FunOS Update 1 ==="
+
 mkdir -p "$TMP_DIR"
+
+#
+# Wallpaper update
+#
+echo "Updating wallpapers..."
+
 mkdir -p "$WALLPAPER_DIR"
 
-echo "Downloading update archive..."
-curl -fsSL "$REPO_URL/update-1/new-update-1.tar.gz" -o "$ARCHIVE"
+curl -fsSL "$REPO_URL/update-1/new-update-1-wallpaper.tar.gz" -o "$WALLPAPER_ARCHIVE"
 
-echo "Extracting wallpapers..."
-tar -xzf "$ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+tar -xzf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+rm -f "$WALLPAPER_ARCHIVE"
 
-echo "Cleaning up..."
-rm -f "$ARCHIVE"
+echo "Wallpapers updated"
 
-echo "Update 1 applied successfully."
+#
+# Plymouth theme
+#
+echo "Installing Plymouth theme..."
+
+curl -fsSL "$REPO_URL/update-1/new-update-1-plymouth-theme.tar.gz" -o "$PLYMOUTH_THEME_ARCHIVE"
+
+tar -xzf "$PLYMOUTH_THEME_ARCHIVE" -C "$PLYMOUTH_THEME_DIR" --no-same-owner
+rm -f "$PLYMOUTH_THEME_ARCHIVE"
+
+if [ ! -f "$FUNOS_THEME_DIR/funos-bgrt.plymouth" ]; then
+    echo "Error: funos-bgrt Plymouth theme not found after extraction"
+    exit 1
+fi
+
+update-alternatives --install \
+    /usr/share/plymouth/themes/default.plymouth \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth" \
+    250
+
+update-alternatives --set \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth"
+
+update-initramfs -u
+
+echo "Plymouth theme applied"
+
+#
+# Volume icon change
+#
+echo "Updating volume icon..."
+
+apt update
+apt remove --purge volumeicon-alsa-legacy -y || true
+apt install volumeicon-alsa -y
+
+echo "Volume icon updated"
+echo "FunOS update 1 applied successfully"
