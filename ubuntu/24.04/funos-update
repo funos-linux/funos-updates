@@ -52,7 +52,7 @@ if [ "$LOCAL_VERSION" -gt "$REMOTE_VERSION" ]; then
 fi
 
 echo "Update available"
-echo "Updating from version $LOCAL_VERSION to $REMOTE_VERSION"
+echo "Updating from $LOCAL_VERSION to $REMOTE_VERSION"
 
 # Run updates incrementally
 for (( i=LOCAL_VERSION+1; i<=REMOTE_VERSION; i++ )); do
@@ -73,4 +73,4 @@ done
 # Update local version only after success
 echo "$REMOTE_VERSION" > "$STATE_FILE"
 
-echo "System successfully updated to version $REMOTE_VERSION"
+echo "System successfully updated to $REMOTE_VERSION"
