@@ -21,18 +21,19 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Ensure cleanup on exit or error
+# Cleanup on exit or error
 cleanup() {
     rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
 
 # Ensure directories exist
-mkdir -p "$STATE_DIR"
-mkdir -p "$TMP_DIR"
+mkdir -p "$STATE_DIR" "$TMP_DIR"
 
 # Ensure local state file exists
-[ ! -f "$STATE_FILE" ] && echo 0 > "$STATE_FILE"
+if [ ! -f "$STATE_FILE" ]; then
+    echo 0 > "$STATE_FILE"
+fi
 
 echo -e "${BOLD}${BLUE}== FunOS Update Manager ==${RESET}"
 echo -e "${BLUE}Checking for available updates...${RESET}"
@@ -61,8 +62,25 @@ if [ "$LOCAL_VERSION" -gt "$REMOTE_VERSION" ]; then
     exit 1
 fi
 
+# Updates available
 echo -e "${YELLOW}Updates available.${RESET}"
-echo -e "${BLUE}Applying updates from level ${BOLD}$LOCAL_VERSION${RESET}${BLUE} to ${BOLD}$REMOTE_VERSION${RESET}${BLUE}...${RESET}"
+echo -e "${BLUE}Updates will be applied from level ${BOLD}$LOCAL_VERSION${RESET}${BLUE} to ${BOLD}$REMOTE_VERSION${RESET}${BLUE}.${RESET}"
+
+# Confirmation prompt
+read -r -p "Do you want to continue? [Y/n]: " ANSWER
+case "$ANSWER" in
+    [Yy]|"")
+        echo -e "${GREEN}Starting update process...${RESET}"
+        ;;
+    [Nn])
+        echo -e "${BLUE}Update cancelled by user.${RESET}"
+        exit 0
+        ;;
+    *)
+        echo -e "${RED}Invalid choice. Please answer Y or n.${RESET}"
+        exit 1
+        ;;
+esac
 
 # Run updates incrementally
 for (( i=LOCAL_VERSION+1; i<=REMOTE_VERSION; i++ )); do
