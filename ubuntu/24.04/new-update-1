@@ -21,6 +21,10 @@ TMP_DIR="/tmp/funos-update"
 WALLPAPER_DIR="/opt/artwork/wallpaper"
 WALLPAPER_ARCHIVE="$TMP_DIR/new-update-1-wallpaper.tar.gz"
 
+PLYMOUTH_THEME_DIR="/usr/share/plymouth/themes"
+PLYMOUTH_THEME_ARCHIVE="$TMP_DIR/new-update-1-plymouth-theme.tar.gz"
+FUNOS_THEME_DIR="$PLYMOUTH_THEME_DIR/funos-bgrt"
+
 echo -e "${BOLD}${BLUE}== FunOS Update: Step 1 ==${RESET}"
 
 mkdir -p "$TMP_DIR"
@@ -39,4 +43,42 @@ rm -f "$WALLPAPER_ARCHIVE"
 
 echo -e "${GREEN}✔ Wallpapers updated successfully.${RESET}"
 
-echo -e "${GREEN}${BOLD}✔ Update step 1 completed successfully.${RESET}"
+#
+# Plymouth theme
+#
+echo -e "${BLUE}→ Installing Plymouth theme...${RESET}"
+
+curl -fsSL "$REPO_URL/update-1/new-update-1-plymouth-theme.tar.gz" -o "$PLYMOUTH_THEME_ARCHIVE"
+
+tar -xzf "$PLYMOUTH_THEME_ARCHIVE" -C "$PLYMOUTH_THEME_DIR" --no-same-owner
+rm -f "$PLYMOUTH_THEME_ARCHIVE"
+
+if [ ! -f "$FUNOS_THEME_DIR/funos-bgrt.plymouth" ]; then
+    echo -e "${RED}Error:${RESET} funos-bgrt Plymouth theme not found after extraction."
+    exit 1
+fi
+
+update-alternatives --install \
+    /usr/share/plymouth/themes/default.plymouth \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth" \
+    250
+
+update-alternatives --set \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth"
+
+update-initramfs -u
+
+echo -e "${GREEN}✔ Plymouth theme applied.${RESET}"
+
+#
+# Volume icon change
+#
+echo -e "${BLUE}→ Updating volume icon...${RESET}"
+
+apt update
+apt remove --purge volumeicon-alsa-legacy -y || true
+apt install volumeicon-alsa -y
+
+echo -e "${GREEN}✔ Volume icon updated.${RESET}"
