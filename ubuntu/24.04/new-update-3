@@ -1,0 +1,31 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 3 ==${RESET}"
+
+#
+# Volume icon change
+#
+echo -e "${BLUE}→ Updating volume icon...${RESET}"
+
+apt update
+apt remove --purge volumeicon-alsa-legacy -y || true
+apt install volumeicon-alsa -y
+
+echo -e "${GREEN}✔ Volume icon updated.${RESET}"
+
+echo -e "${GREEN}${BOLD}✔ Update step 3 completed successfully.${RESET}"

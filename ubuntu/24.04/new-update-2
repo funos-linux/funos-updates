@@ -1,0 +1,58 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/24.04"
+TMP_DIR="/tmp/funos-update"
+
+PLYMOUTH_THEME_DIR="/usr/share/plymouth/themes"
+PLYMOUTH_THEME_ARCHIVE="$TMP_DIR/new-update-2-plymouth-theme.tar.gz"
+FUNOS_THEME_DIR="$PLYMOUTH_THEME_DIR/funos-bgrt"
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 2 ==${RESET}"
+
+mkdir -p "$TMP_DIR"
+
+#
+# Plymouth theme
+#
+echo -e "${BLUE}→ Installing Plymouth theme...${RESET}"
+
+curl -fsSL "$REPO_URL/update-2/new-update-2-plymouth-theme.tar.gz" -o "$PLYMOUTH_THEME_ARCHIVE"
+
+tar -xzf "$PLYMOUTH_THEME_ARCHIVE" -C "$PLYMOUTH_THEME_DIR" --no-same-owner
+rm -f "$PLYMOUTH_THEME_ARCHIVE"
+
+if [ ! -f "$FUNOS_THEME_DIR/funos-bgrt.plymouth" ]; then
+    echo -e "${RED}Error:${RESET} funos-bgrt Plymouth theme not found after extraction."
+    exit 1
+fi
+
+update-alternatives --install \
+    /usr/share/plymouth/themes/default.plymouth \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth" \
+    250
+
+update-alternatives --set \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth"
+
+update-initramfs -u
+
+echo -e "${GREEN}✔ Plymouth theme applied.${RESET}"
+
+echo -e "${GREEN}${BOLD}✔ Update step 2 completed successfully.${RESET}"
