@@ -9,10 +9,6 @@ This repository works together with the `sudo funos-update` command-line tool.
 
 ## What Is This Repository For?
 
-FunOS aims to stay **light, minimal, and stable**.
-Not all improvements or fixes belong in traditional system packages.
-Some updates are better delivered as small, targeted changes.
-
 This repository is used to distribute:
 
 * New wallpapers and artwork
