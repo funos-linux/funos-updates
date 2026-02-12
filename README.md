@@ -1,7 +1,6 @@
 # funos-updates
 
 **funos-updates** is the official update repository for **FunOS**.
-It provides a simple, lightweight, and transparent way to deliver FunOS-specific updates outside of the standard APT system.
 
 This repository works together with the `sudo funos-update` command-line tool.
 
