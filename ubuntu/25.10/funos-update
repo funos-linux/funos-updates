@@ -1,0 +1,105 @@
+#!/bin/bash
+set -e
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/25.10"
+STATE_DIR="/var/lib/funos-update"
+STATE_FILE="$STATE_DIR/update-version.txt"
+TMP_DIR="/tmp/funos-update"
+TMP_VERSION_FILE="$TMP_DIR/update-version.txt"
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this updater as root."
+    exit 1
+fi
+
+# Cleanup on exit or error
+cleanup() {
+    rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+# Ensure directories exist
+mkdir -p "$STATE_DIR" "$TMP_DIR"
+
+# Ensure local state file exists
+if [ ! -f "$STATE_FILE" ]; then
+    echo 0 > "$STATE_FILE"
+fi
+
+echo -e "${BOLD}${BLUE}== FunOS Update Manager ==${RESET}"
+echo -e "${BLUE}Checking for available updates...${RESET}"
+
+# Download remote update version file
+curl -fsSL "$REPO_URL/update-version.txt" -o "$TMP_VERSION_FILE"
+
+# Read versions
+LOCAL_VERSION=$(<"$STATE_FILE")
+REMOTE_VERSION=$(<"$TMP_VERSION_FILE")
+
+# Ensure numeric values
+if ! [[ "$LOCAL_VERSION" =~ ^[0-9]+$ && "$REMOTE_VERSION" =~ ^[0-9]+$ ]]; then
+    echo -e "${RED}Error:${RESET} Invalid update version number."
+    exit 1
+fi
+
+# Compare versions
+if [ "$LOCAL_VERSION" -eq "$REMOTE_VERSION" ]; then
+    echo -e "${GREEN}✔ No updates available. Your system is up to date.${RESET}"
+    exit 0
+fi
+
+if [ "$LOCAL_VERSION" -gt "$REMOTE_VERSION" ]; then
+    echo -e "${RED}Error:${RESET} Local update level is newer than the remote one (unexpected)."
+    exit 1
+fi
+
+# Updates available
+echo -e "${YELLOW}Updates available.${RESET}"
+echo -e "${BLUE}Updates will be applied from level ${BOLD}$LOCAL_VERSION${RESET}${BLUE} to ${BOLD}$REMOTE_VERSION${RESET}${BLUE}.${RESET}"
+
+# Confirmation prompt
+read -r -p "Do you want to continue? [Y/n]: " ANSWER
+case "$ANSWER" in
+    [Yy]|"")
+        echo -e "${GREEN}Starting update process...${RESET}"
+        ;;
+    [Nn])
+        echo -e "${BLUE}Update cancelled by user.${RESET}"
+        exit 0
+        ;;
+    *)
+        echo -e "${RED}Invalid choice. Please answer Y or n.${RESET}"
+        exit 1
+        ;;
+esac
+
+# Run updates incrementally
+for (( i=LOCAL_VERSION+1; i<=REMOTE_VERSION; i++ )); do
+    UPDATE_FILE="new-update-$i"
+    UPDATE_PATH="$TMP_DIR/$UPDATE_FILE"
+
+    echo -e "${YELLOW}→ Downloading update step ${BOLD}$i${RESET}${YELLOW}...${RESET}"
+    curl -fsSL "$REPO_URL/$UPDATE_FILE" -o "$UPDATE_PATH"
+
+    chmod +x "$UPDATE_PATH"
+
+    echo -e "${YELLOW}→ Running update step ${BOLD}$i${RESET}${YELLOW}...${RESET}"
+    "$UPDATE_PATH"
+
+    echo -e "${GREEN}✔ Update step $i completed successfully.${RESET}"
+done
+
+# Update local version only after success
+echo "$REMOTE_VERSION" > "$STATE_FILE"
+
+echo -e "${GREEN}${BOLD}✔ All updates applied successfully.${RESET}"
+echo -e "${GREEN}Current update level: ${BOLD}$REMOTE_VERSION${RESET}"
