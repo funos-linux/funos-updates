@@ -1,0 +1,121 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/26.04"
+TMP_DIR="/tmp/funos-update"
+
+WALLPAPER_DIR="/opt/artwork/wallpaper"
+WALLPAPER_ARCHIVE="$TMP_DIR/new-update-1-wallpaper.tar.gz"
+
+PLYMOUTH_THEME_DIR="/usr/share/plymouth/themes"
+PLYMOUTH_THEME_ARCHIVE="$TMP_DIR/new-update-1-plymouth-theme.tar.gz"
+FUNOS_THEME_DIR="$PLYMOUTH_THEME_DIR/funos-bgrt"
+
+VOLUMEICON_ALSA_ARCHIVE="$TMP_DIR/volumeicon-alsa_0.5.1+git20230228-1build3_amd64.deb"
+
+NITROGEN_ARCHIVE="$TMP_DIR/nitrogen_1.6.1-2build3_amd64.deb"
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 1 ==${RESET}"
+
+mkdir -p "$TMP_DIR"
+
+#
+# Wallpaper update
+#
+echo -e "${BLUE}→ Updating wallpapers...${RESET}"
+
+mkdir -p "$WALLPAPER_DIR"
+
+curl -fsSL "$REPO_URL/update-1/new-update-1-wallpaper.tar.gz" -o "$WALLPAPER_ARCHIVE"
+
+tar -xzf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+rm -f "$WALLPAPER_ARCHIVE"
+
+echo -e "${GREEN}✔ Wallpapers updated successfully.${RESET}"
+
+#
+# Plymouth theme
+#
+echo -e "${BLUE}→ Installing Plymouth theme...${RESET}"
+
+curl -fsSL "$REPO_URL/update-1/new-update-1-plymouth-theme.tar.gz" -o "$PLYMOUTH_THEME_ARCHIVE"
+
+rm -rf "$FUNOS_THEME_DIR"
+tar -xzf "$PLYMOUTH_THEME_ARCHIVE" -C "$PLYMOUTH_THEME_DIR" --no-same-owner
+rm -f "$PLYMOUTH_THEME_ARCHIVE"
+
+if [ ! -f "$FUNOS_THEME_DIR/funos-bgrt.plymouth" ]; then
+    echo -e "${RED}Error:${RESET} funos-bgrt Plymouth theme not found after extraction."
+    exit 1
+fi
+
+update-alternatives --install \
+    /usr/share/plymouth/themes/default.plymouth \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth" \
+    250
+
+update-alternatives --set \
+    default.plymouth \
+    "$FUNOS_THEME_DIR/funos-bgrt.plymouth"
+
+update-initramfs -u
+
+echo -e "${GREEN}✔ Plymouth theme applied.${RESET}"
+
+#
+# Volume icon update
+#
+echo -e "${BLUE}→ Updating volume icon...${RESET}"
+
+apt update || true
+apt remove --purge volumeicon-alsa-legacy -y || true
+curl -fsSL "$REPO_URL/update-1/volumeicon-alsa_0.5.1+git20230228-1build3_amd64.deb" -o "$VOLUMEICON_ALSA_ARCHIVE"
+apt install "$VOLUMEICON_ALSA_ARCHIVE" -y
+
+echo -e "${GREEN}✔ Volume icon updated.${RESET}"
+
+#
+# Nitrogen install
+#
+echo -e "${BLUE}→ Installing Nitrogen...${RESET}"
+
+curl -fsSL "$REPO_URL/update-1/nitrogen_1.6.1-2build3_amd64.deb" -o "$NITROGEN_ARCHIVE"
+apt install "$NITROGEN_ARCHIVE" -y
+
+echo -e "${GREEN}✔ Nitrogen installed.${RESET}"
+
+#
+# Mozilla Team PPA update
+#
+echo -e "${BLUE}→ Updating Mozilla Team PPA...${RESET}"
+
+add-apt-repository --remove ppa:mozillateam/ppa -y || true
+add-apt-repository ppa:mozillateam/ppa -y || true
+apt update || true
+
+echo -e "${GREEN}✔ Mozilla Team PPA updated.${RESET}"
+
+#
+# Dracut install
+#
+echo -e "${BLUE}→ Installing Dracut...${RESET}"
+
+apt install dracut -y
+apt autoremove --purge -y
+
+echo -e "${GREEN}✔ Dracut installed.${RESET}"
