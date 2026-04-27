@@ -73,8 +73,6 @@ update-alternatives --set \
     default.plymouth \
     "$FUNOS_THEME_DIR/funos-bgrt.plymouth"
 
-update-initramfs -u
-
 echo -e "${GREEN}✔ Plymouth theme applied.${RESET}"
 
 #
@@ -119,3 +117,14 @@ apt install dracut -y
 apt autoremove --purge -y
 
 echo -e "${GREEN}✔ Dracut installed.${RESET}"
+
+#
+# Remove unused desktop entries
+#
+echo -e "${BLUE}→ Removing unused desktop entries...${RESET}"
+
+rm -f /usr/share/applications/pcmanfm-desktop-pref.desktop
+rm -f /usr/share/applications/info.desktop
+rm -f /usr/share/applications/vim.desktop
+
+echo -e "${GREEN}✔ Unused desktop entries removed.${RESET}"
