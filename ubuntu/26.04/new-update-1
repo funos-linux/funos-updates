@@ -82,6 +82,7 @@ echo -e "${BLUE}→ Updating volume icon...${RESET}"
 
 apt update || true
 apt remove --purge volumeicon-alsa-legacy -y || true
+apt remove --purge volumeicon-alsa -y || true
 curl -fsSL "$REPO_URL/update-1/volumeicon-alsa_0.5.1+git20230228-1build3_amd64.deb" -o "$VOLUMEICON_ALSA_ARCHIVE"
 apt install "$VOLUMEICON_ALSA_ARCHIVE" -y
 
