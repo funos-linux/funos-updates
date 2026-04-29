@@ -102,7 +102,7 @@ echo -e "${GREEN}✔ Nitrogen installed.${RESET}"
 #
 echo -e "${BLUE}→ Updating Mozilla Team PPA...${RESET}"
 
-add-apt-repository --remove ppa:mozillateam/ppa -y || true
+rm -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-questing.sources
 add-apt-repository ppa:mozillateam/ppa -y || true
 apt update || true
 
