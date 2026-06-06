@@ -1,0 +1,40 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/24.04"
+TMP_DIR="/tmp/funos-update"
+
+WALLPAPER_DIR="/opt/artwork/wallpaper"
+WALLPAPER_ARCHIVE="$TMP_DIR/new-update-3-wallpaper.tar.gz"
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 3 ==${RESET}"
+
+mkdir -p "$TMP_DIR"
+
+#
+# Wallpaper update
+#
+echo -e "${BLUE}→ Updating wallpapers...${RESET}"
+
+mkdir -p "$WALLPAPER_DIR"
+
+curl -fsSL "$REPO_URL/update-3/new-update-3-wallpaper.tar.gz" -o "$WALLPAPER_ARCHIVE"
+
+tar -xzf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+rm -f "$WALLPAPER_ARCHIVE"
+
+echo -e "${GREEN}✔ Wallpapers updated successfully.${RESET}"
