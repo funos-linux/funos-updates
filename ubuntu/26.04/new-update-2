@@ -1,0 +1,101 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/26.04"
+TMP_DIR="/tmp/funos-update"
+PAYLOAD_DIR="$TMP_DIR/update-2-payload"
+ARCHIVE="$TMP_DIR/new-update-2-config.tar.gz"
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 2 ==${RESET}"
+
+mkdir -p "$TMP_DIR"
+mkdir -p "$PAYLOAD_DIR"
+
+echo -e "${BLUE}→ Downloading configuration improvements...${RESET}"
+curl -fsSL "$REPO_URL/update-2/new-update-2-config.tar.gz" -o "$ARCHIVE"
+
+tar -xzf "$ARCHIVE" -C "$PAYLOAD_DIR" --no-same-owner
+rm -f "$ARCHIVE"
+
+# Update /etc/skel
+echo -e "${BLUE}→ Updating default user profile (/etc/skel)...${RESET}"
+SKEL_DIR="/etc/skel"
+
+mkdir -p "$SKEL_DIR/.config/systemd/user/paths.target.wants"
+mkdir -p "$SKEL_DIR/.config/jwm/themes"
+
+cp "$PAYLOAD_DIR/jwm-menu.service" "$SKEL_DIR/.config/systemd/user/"
+cp "$PAYLOAD_DIR/jwm-menu.path" "$SKEL_DIR/.config/systemd/user/"
+ln -sf "../jwm-menu.path" "$SKEL_DIR/.config/systemd/user/paths.target.wants/jwm-menu.path"
+
+cp "$PAYLOAD_DIR/set-theme.sh" "$SKEL_DIR/.config/jwm/"
+chmod +x "$SKEL_DIR/.config/jwm/set-theme.sh"
+cp "$PAYLOAD_DIR/themes-list" "$SKEL_DIR/.config/jwm/"
+
+rm -f "$SKEL_DIR/.config/jwm/themes/Blue-Day"
+
+if [ -f "$SKEL_DIR/.config/jwm/menu" ]; then
+    sed -i '/label="Reload menu"/d' "$SKEL_DIR/.config/jwm/menu"
+fi
+
+# Apply lxrandr snippet
+if [ ! -f "$SKEL_DIR/.xprofile" ] || ! grep -q "lxrandr-autostart.desktop" "$SKEL_DIR/.xprofile"; then
+    cat "$PAYLOAD_DIR/xprofile-snippet.sh" >> "$SKEL_DIR/.xprofile"
+fi
+
+# Update existing users
+echo -e "${BLUE}→ Applying changes to existing users...${RESET}"
+for user_dir in /home/*; do
+    if [ -d "$user_dir" ]; then
+        user_name=$(basename "$user_dir")
+        user_uid=$(stat -c '%u' "$user_dir")
+        user_gid=$(stat -c '%g' "$user_dir")
+        
+        echo -e "${YELLOW}  Updating user: $user_name${RESET}"
+        
+        mkdir -p "$user_dir/.config/systemd/user/paths.target.wants"
+        mkdir -p "$user_dir/.config/jwm/themes"
+        
+        cp "$PAYLOAD_DIR/jwm-menu.service" "$user_dir/.config/systemd/user/"
+        cp "$PAYLOAD_DIR/jwm-menu.path" "$user_dir/.config/systemd/user/"
+        ln -sf "../jwm-menu.path" "$user_dir/.config/systemd/user/paths.target.wants/jwm-menu.path"
+        
+        cp "$PAYLOAD_DIR/set-theme.sh" "$user_dir/.config/jwm/"
+        chmod +x "$user_dir/.config/jwm/set-theme.sh"
+        cp "$PAYLOAD_DIR/themes-list" "$user_dir/.config/jwm/"
+        
+        rm -f "$user_dir/.config/jwm/themes/Blue-Day"
+        
+        if [ -f "$user_dir/.config/jwm/menu" ]; then
+            sed -i '/label="Reload menu"/d' "$user_dir/.config/jwm/menu"
+        fi
+        
+        # Apply lxrandr snippet
+        if [ ! -f "$user_dir/.xprofile" ] || ! grep -q "lxrandr-autostart.desktop" "$user_dir/.xprofile"; then
+            cat "$PAYLOAD_DIR/xprofile-snippet.sh" >> "$user_dir/.xprofile"
+        fi
+        
+        # Fix ownership
+        chown -R "$user_uid:$user_gid" "$user_dir/.config/systemd" 2>/dev/null || true
+        chown -R "$user_uid:$user_gid" "$user_dir/.config/jwm" 2>/dev/null || true
+        chown "$user_uid:$user_gid" "$user_dir/.xprofile" 2>/dev/null || true
+    fi
+done
+
+
+
+echo -e "${GREEN}✔ FunOS configuration improvements applied successfully.${RESET}"
