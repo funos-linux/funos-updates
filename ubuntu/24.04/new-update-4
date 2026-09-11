@@ -103,5 +103,5 @@ for user_dir in /home/*; do
 done
 
 
-
+rm -rf "$PAYLOAD_DIR"
 echo -e "${GREEN}✔ FunOS configuration improvements applied successfully.${RESET}"
