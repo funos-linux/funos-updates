@@ -17,7 +17,7 @@ fi
 
 REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/24.04"
 TMP_DIR="/tmp/funos-update"
-TIMESTAMP=$(date +%Y%m%d%H%M%S)
+TIMESTAMP=$(date +%Y%m%d)
 
 WALLPAPER_DIR="/opt/artwork/wallpaper"
 WALLPAPER_ARCHIVE="$TMP_DIR/new-update-5-wallpaper.tar.gz"
@@ -342,14 +342,3 @@ if [ "$NEEDS_SKEL_UPDATE" = true ]; then
 fi
 
 echo -e "${GREEN}✔ User configs checked and updated if necessary.${RESET}"
-
-#
-# Fix funos-logout script
-#
-echo -e "${BLUE}→ Checking funos-logout script...${RESET}"
-
-if [ -f /usr/bin/funos-logout ]; then
-    sed -i 's/star_clas/star_ttle/g' /usr/bin/funos-logout
-fi
-
-echo -e "${GREEN}✔ funos-logout script checked.${RESET}"
