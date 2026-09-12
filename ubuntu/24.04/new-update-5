@@ -17,6 +17,7 @@ fi
 
 REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/24.04"
 TMP_DIR="/tmp/funos-update"
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
 
 WALLPAPER_DIR="/opt/artwork/wallpaper"
 WALLPAPER_ARCHIVE="$TMP_DIR/new-update-5-wallpaper.tar.gz"
@@ -71,11 +72,11 @@ echo -e "${BLUE}→ Updating wallpapers...${RESET}"
 
 if [ ! -f "$WALLPAPER_DIR/01-fuji-lake-sunset.jpg" ]; then
     mkdir -p "$WALLPAPER_DIR"
-    curl -fsSL "$REPO_URL/update-5/new-update-5-wallpaper.tar.gz.partaa" -o "${WALLPAPER_ARCHIVE}.partaa"
-    curl -fsSL "$REPO_URL/update-5/new-update-5-wallpaper.tar.gz.partab" -o "${WALLPAPER_ARCHIVE}.partab"
+    curl -fL -# "$REPO_URL/update-5/new-update-5-wallpaper.tar.gz.partaa" -o "${WALLPAPER_ARCHIVE}.partaa"
+    curl -fL -# "$REPO_URL/update-5/new-update-5-wallpaper.tar.gz.partab" -o "${WALLPAPER_ARCHIVE}.partab"
     
     cat "${WALLPAPER_ARCHIVE}.partaa" "${WALLPAPER_ARCHIVE}.partab" > "$WALLPAPER_ARCHIVE"
-    tar -xzf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+    tar -xzvf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
     rm -f "$WALLPAPER_ARCHIVE" "${WALLPAPER_ARCHIVE}.partaa" "${WALLPAPER_ARCHIVE}.partab"
 fi
 
@@ -119,6 +120,16 @@ apt-get install -y \
     fonts-dejavu-core
 
 echo -e "${GREEN}✔ Required packages installed.${RESET}"
+
+#
+# Remove unused packages
+#
+echo -e "${BLUE}→ Removing unused packages...${RESET}"
+
+apt-get remove -y --purge system-tools-backends gnome-system-tools || true
+apt-get autoremove -y
+
+echo -e "${GREEN}✔ Unused packages removed.${RESET}"
 
 #
 # Update GTK 2.0 settings
@@ -269,11 +280,11 @@ fi
 if [ "$NEEDS_SKEL_UPDATE" = true ]; then
     echo -e "${YELLOW}  Updating /etc/skel...${RESET}"
     rm -rf "$SKEL_DIR"/* "$SKEL_DIR"/.[!.]* "$SKEL_DIR"/..?* 2>/dev/null || true
-    curl -fsSL "$REPO_URL/update-5/new-update-5-skel.tar.gz" -o "$SKEL_ARCHIVE"
-    tar -xzf "$SKEL_ARCHIVE" -C "$SKEL_DIR" --no-same-owner
+    curl -fL -# "$REPO_URL/update-5/new-update-5-skel.tar.gz" -o "$SKEL_ARCHIVE"
+    tar -xzvf "$SKEL_ARCHIVE" -C "$SKEL_DIR" --no-same-owner
     
     echo -e "${BLUE}→ Applying changes to existing users...${RESET}"
-    tar -xzf "$SKEL_ARCHIVE" -C "$SKEL_TMP_DIR" --no-same-owner
+    tar -xzvf "$SKEL_ARCHIVE" -C "$SKEL_TMP_DIR" --no-same-owner
     
     for user_dir in /home/*; do
         if [ -d "$user_dir" ]; then
@@ -285,18 +296,23 @@ if [ "$NEEDS_SKEL_UPDATE" = true ]; then
             
             # Backup and replace .jwmrc
             if [ -f "$user_dir/.jwmrc" ]; then
-                cp "$user_dir/.jwmrc" "$user_dir/.jwmrc.bak"
+                cp "$user_dir/.jwmrc" "$user_dir/.jwmrc.bak-$TIMESTAMP"
                 rm -f "$user_dir/.jwmrc"
             fi
             cp "$SKEL_TMP_DIR/.jwmrc" "$user_dir/.jwmrc"
             
             # Backup and replace .config/jwm
             if [ -d "$user_dir/.config/jwm" ]; then
-                cp -r "$user_dir/.config/jwm" "$user_dir/.config/jwm.bak"
+                cp -r "$user_dir/.config/jwm" "$user_dir/.config/jwm.bak-$TIMESTAMP"
                 rm -rf "$user_dir/.config/jwm"
             fi
             mkdir -p "$user_dir/.config"
             cp -r "$SKEL_TMP_DIR/.config/jwm" "$user_dir/.config/jwm"
+            
+            # Remove local GTK settings to force system-wide settings
+            rm -f "$user_dir/.gtkrc-2.0.mine"
+            rm -f "$user_dir/.gtkrc-2.0"
+            rm -f "$user_dir/.config/gtk-3.0/settings.ini"
             
             # Update nitrogen config
             if [ -f "$user_dir/.config/nitrogen/bg-saved.cfg" ]; then
@@ -304,7 +320,7 @@ if [ "$NEEDS_SKEL_UPDATE" = true ]; then
             fi
             
             # Fix ownership
-            chown -R "$user_uid:$user_gid" "$user_dir/.jwmrc" "$user_dir/.jwmrc.bak" "$user_dir/.config/jwm" "$user_dir/.config/jwm.bak" "$user_dir/.config/nitrogen" 2>/dev/null || true
+            chown -R "$user_uid:$user_gid" "$user_dir/.jwmrc" "$user_dir/.jwmrc.bak-$TIMESTAMP" "$user_dir/.config/jwm" "$user_dir/.config/jwm.bak-$TIMESTAMP" "$user_dir/.config/nitrogen" 2>/dev/null || true
         fi
     done
     
