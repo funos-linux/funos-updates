@@ -202,6 +202,19 @@ EOF
 echo -e "${GREEN}✔ LightDM greeter configured.${RESET}"
 
 #
+# Check and update main LightDM config if needed
+#
+if [ -f /etc/lightdm/lightdm-gtk-greeter.conf ]; then
+    for old_wp in "${OLD_WALLPAPERS[@]}"; do
+        if grep -q "^[[:space:]]*background.*$old_wp" /etc/lightdm/lightdm-gtk-greeter.conf; then
+            sed -i 's|^[[:space:]]*background[[:space:]]*=.*|background = /opt/artwork/wallpaper/98-synthwave-horizon.png|' /etc/lightdm/lightdm-gtk-greeter.conf
+            echo -e "${YELLOW}  Updated old background in lightdm-gtk-greeter.conf${RESET}"
+            break
+        fi
+    done
+fi
+
+#
 # Fix Netplan config extension
 #
 echo -e "${BLUE}→ Checking Netplan config extension...${RESET}"
