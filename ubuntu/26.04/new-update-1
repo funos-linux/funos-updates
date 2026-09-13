@@ -38,12 +38,14 @@ mkdir -p "$TMP_DIR"
 #
 echo -e "${BLUE}→ Updating wallpapers...${RESET}"
 
-mkdir -p "$WALLPAPER_DIR"
+if [ ! -f "$WALLPAPER_DIR/99-funos-synthwave-horizon.png" ]; then
+    mkdir -p "$WALLPAPER_DIR"
 
-curl -fsSL "$REPO_URL/update-1/new-update-1-wallpaper.tar.gz" -o "$WALLPAPER_ARCHIVE"
+    curl -fsSL "$REPO_URL/update-1/new-update-1-wallpaper.tar.gz" -o "$WALLPAPER_ARCHIVE"
 
-tar -xzf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
-rm -f "$WALLPAPER_ARCHIVE"
+    tar -xzf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+    rm -f "$WALLPAPER_ARCHIVE"
+fi
 
 echo -e "${GREEN}✔ Wallpapers updated successfully.${RESET}"
 
