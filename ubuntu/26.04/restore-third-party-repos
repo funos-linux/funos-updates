@@ -1,0 +1,56 @@
+#!/bin/bash
+
+# Ensure script is run as root
+if [ "$EUID" -ne 0 ]; then
+  echo "Please run as root using sudo."
+  exit
+fi
+
+echo "Restoring Third-Party Repositories..."
+
+for file in /etc/apt/sources.list.d/*; do
+    # Skip if not a regular file
+    [ -f "$file" ] || continue
+    
+    filename=$(basename "$file")
+    
+    # 1. Skip the core Ubuntu files and the FunOS Mozilla PPA
+    if [[ "$filename" == "ubuntu.sources" ]] || [[ "$filename" == "mozillateam-ubuntu-ppa-resolute.sources" ]]; then
+        echo "Skipping core file: $filename"
+        continue
+    fi
+    
+    # 2. Check if it's a Launchpad PPA
+    if grep -qE "ppa\.launchpad(content)?\.net" "$file"; then
+        echo "Found Launchpad PPA in $filename"
+        
+        # Extract the PPA URL
+        PPA_URL=$(grep -oE "https?://ppa\.launchpad(content)?\.net/[^/]+/[^/]+" "$file" | head -n 1)
+        if [ -n "$PPA_URL" ]; then
+            # Extract the user/ppa-name part
+            PPA_NAME=$(echo "$PPA_URL" | sed -E 's|https?://ppa\.launchpad(content)?\.net/||')
+            
+            echo "Removing old PPA file: $file"
+            rm -f "$file"
+            
+            echo "Re-adding PPA: ppa:$PPA_NAME for Resolute..."
+            add-apt-repository -y "ppa:$PPA_NAME"
+        fi
+    else
+        # 3. Not a Launchpad PPA, treat as an independent global repository
+        echo "Re-enabling global repository in $filename"
+        if [[ "$filename" == *.list ]]; then
+            sed -i 's/^# deb/deb/g' "$file"
+            sed -i 's/^# deb-src/deb-src/g' "$file"
+        elif [[ "$filename" == *.sources ]]; then
+            sed -i 's/^Enabled: no/Enabled: yes/g' "$file"
+            sed -i 's/^Enabled: false/Enabled: true/g' "$file"
+        fi
+    fi
+done
+
+# 6. Update apt
+echo "Updating package lists..."
+apt update
+
+echo "Third-party repositories restored successfully."
