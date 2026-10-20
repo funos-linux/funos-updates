@@ -1,0 +1,153 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+REPO_URL="https://raw.githubusercontent.com/funos-linux/funos-updates/main/ubuntu/26.04"
+TMP_DIR="/tmp/funos-update"
+
+WALLPAPER_DIR="/opt/artwork/wallpaper"
+WALLPAPER_ARCHIVE="$TMP_DIR/new-update-3-wallpaper.tar.gz"
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 3 ==${RESET}"
+
+mkdir -p "$TMP_DIR"
+
+#
+# 1. Wallpaper update
+#
+echo -e "${BLUE}→ Updating wallpapers...${RESET}"
+
+mkdir -p "$WALLPAPER_DIR"
+
+curl -fsSL "$REPO_URL/update-3/new-update-3-wallpaper.tar.gz" -o "$WALLPAPER_ARCHIVE"
+tar -xzf "$WALLPAPER_ARCHIVE" -C "$WALLPAPER_DIR" --no-same-owner
+rm -f "$WALLPAPER_ARCHIVE"
+
+echo -e "${GREEN}✔ Wallpapers updated successfully.${RESET}"
+
+#
+# 2. Sound server transition: PulseAudio to PipeWire
+#
+echo -e "${BLUE}→ Transitioning from PulseAudio to PipeWire...${RESET}"
+
+apt update || true
+apt install -y pipewire pipewire-pulse pipewire-alsa wireplumber
+apt remove --purge -y pulseaudio || true
+apt autoremove --purge -y || true
+
+# Install start-volumeicon helper script
+cat << 'EOF' > /usr/local/bin/start-volumeicon
+#!/bin/bash
+# Wait until the PipeWire-Pulse socket is fully initialized by the user
+while [ ! -S "/run/user/$(id -u)/pipewire-pulse/native" ] && [ ! -S "/run/user/$(id -u)/pulse/native" ]; do
+    sleep 0.2
+done
+
+# Wait just one more tiny fraction of a second to ensure the ALSA plugin caught up
+sleep 0.5
+
+# Launch volumeicon
+exec volumeicon
+EOF
+chmod 755 /usr/local/bin/start-volumeicon
+
+# Enable PipeWire user services globally
+systemctl --global enable pipewire.socket pipewire-pulse.socket wireplumber.service 2>/dev/null || true
+
+# Activate PipeWire for currently active user sessions
+for user_dir in /home/*; do
+    if [ -d "$user_dir" ]; then
+        user_name=$(basename "$user_dir")
+        user_uid=$(stat -c '%u' "$user_dir")
+        if loginctl list-users --no-legend 2>/dev/null | grep -q "\b$user_name\b"; then
+            sudo -u "$user_name" XDG_RUNTIME_DIR="/run/user/$user_uid" systemctl --user daemon-reload 2>/dev/null || true
+            sudo -u "$user_name" XDG_RUNTIME_DIR="/run/user/$user_uid" systemctl --user enable --now pipewire pipewire-pulse wireplumber 2>/dev/null || true
+        fi
+    fi
+done
+
+echo -e "${GREEN}✔ PipeWire installed and configured.${RESET}"
+
+#
+# 3. Uninstall XScreenSaver
+#
+echo -e "${BLUE}→ Removing XScreenSaver...${RESET}"
+
+apt remove --purge -y xscreensaver || true
+apt autoremove --purge -y || true
+
+echo -e "${GREEN}✔ XScreenSaver removed.${RESET}"
+
+#
+# 4. Update JWM startup configuration
+#
+echo -e "${BLUE}→ Updating JWM startup configuration...${RESET}"
+
+SKEL_START="/etc/skel/.config/jwm/start"
+mkdir -p "/etc/skel/.config/jwm"
+
+cat << 'EOF' > "$SKEL_START"
+<?xml version="1.0" encoding="UTF-8"?>
+<JWM>
+    <!-- Startup for program. -->
+    <StartupCommand>lxpolkit</StartupCommand>
+    <StartupCommand>xdg-user-dirs-update</StartupCommand>
+    <StartupCommand>xset dpms 600 600 600</StartupCommand>
+    <StartupCommand>nitrogen --restore</StartupCommand>
+    <StartupCommand>nm-tray</StartupCommand>
+    <StartupCommand>cbatticon</StartupCommand>
+    <StartupCommand>start-volumeicon</StartupCommand>
+</JWM>
+EOF
+chmod 644 "$SKEL_START"
+
+# Update existing user home directories
+for user_dir in /home/*; do
+    if [ -d "$user_dir" ]; then
+        user_name=$(basename "$user_dir")
+        user_uid=$(stat -c '%u' "$user_dir")
+        user_gid=$(stat -c '%g' "$user_dir")
+        user_start="$user_dir/.config/jwm/start"
+        
+        if [ -f "$user_start" ]; then
+            echo -e "${YELLOW}  Updating JWM startup configuration for: $user_name${RESET}"
+            
+            # Backup original file
+            cp "$user_start" "${user_start}.bak"
+            
+            # Check for any user custom startup commands (excluding default commands)
+            custom_cmds=$(grep "<StartupCommand>" "$user_start" | grep -v -E "nitrogen|cbatticon|volumeicon|nm-tray|lxpolkit|xscreensaver|xset|xdg-user-dirs-update" || true)
+            
+            # Apply the 26.10 standard template
+            cp "$SKEL_START" "$user_start"
+            
+            # Re-append any custom commands if present
+            if [ -n "$custom_cmds" ]; then
+                while IFS= read -r line; do
+                    trimmed=$(echo "$line" | sed "s/^[[:space:]]*//")
+                    sed -i "/<\/JWM>/i \    $trimmed" "$user_start"
+                done <<< "$custom_cmds"
+            fi
+            
+            chown "$user_uid:$user_gid" "$user_start" "${user_start}.bak" 2>/dev/null || true
+        elif [ -d "$user_dir/.config/jwm" ]; then
+            cp "$SKEL_START" "$user_start"
+            chown "$user_uid:$user_gid" "$user_start" 2>/dev/null || true
+        fi
+    fi
+done
+
+echo -e "${GREEN}✔ JWM startup configuration updated.${RESET}"
