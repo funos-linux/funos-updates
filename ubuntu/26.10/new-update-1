@@ -55,3 +55,61 @@ update-alternatives --set \
 update-initramfs -u
 
 echo -e "${GREEN}✔ Plymouth theme applied.${RESET}"
+
+#
+# Divert nm-tray.desktop
+#
+echo -e "${BLUE}→ Diverting nm-tray.desktop to keep it hidden from the application menu...${RESET}"
+
+DESKTOP_FILE="/usr/share/applications/nm-tray.desktop"
+DIVERTED_FILE="/usr/share/applications/nm-tray.desktop.real"
+
+# Register the diversion if not already diverted
+if ! dpkg-divert --list "$DESKTOP_FILE" | grep -q "$DESKTOP_FILE"; then
+    dpkg-divert --add --rename --divert "$DIVERTED_FILE" "$DESKTOP_FILE"
+fi
+
+# Create the custom desktop entry with NoDisplay=true
+cat << 'EOF' > "$DESKTOP_FILE"
+[Desktop Entry]
+Type=Application
+Name=nm-tray
+Comment=NetworkManager frontend (tray icon)
+Icon=network-transmit
+TryExec=nm-tray
+Exec=nm-tray
+Categories=System;Monitor;Qt;
+NoDisplay=true
+EOF
+chmod 644 "$DESKTOP_FILE"
+
+# Refresh application desktop database cache if available
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q /usr/share/applications || true
+fi
+
+echo -e "${GREEN}✔ nm-tray.desktop diverted and hidden from application menu.${RESET}"
+
+#
+# Mozilla Team PPA update
+#
+echo -e "${BLUE}→ Updating Mozilla Team PPA...${RESET}"
+
+rm -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-resolute.sources
+rm -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-questing.sources
+rm -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-noble.sources
+add-apt-repository ppa:mozillateam/ppa -y || true
+apt update || true
+
+echo -e "${GREEN}✔ Mozilla Team PPA updated.${RESET}"
+
+#
+# Remove unused desktop entries
+#
+echo -e "${BLUE}→ Removing unused desktop entries...${RESET}"
+
+rm -f /usr/share/applications/pcmanfm-desktop-pref.desktop
+rm -f /usr/share/applications/info.desktop
+rm -f /usr/share/applications/vim.desktop
+
+echo -e "${GREEN}✔ Unused desktop entries removed.${RESET}"
