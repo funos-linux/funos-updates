@@ -23,6 +23,6 @@ echo -e "${BOLD}${BLUE}== FunOS Update: Step 4 ==${RESET}"
 echo -e "${BLUE}→ Configuring HWE kernel metapackage...${RESET}"
 
 apt-get update || true
-apt-get install -y linux-generic-hwe-26.04 || true
+apt-get install --no-install-recommends -y linux-generic-hwe-26.04 || true
 
 echo -e "${GREEN}✔ HWE kernel metapackage installed.${RESET}"
