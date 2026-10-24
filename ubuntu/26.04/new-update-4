@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 4 ==${RESET}"
+
+#
+# 1. Configure HWE kernel metapackage
+#
+echo -e "${BLUE}→ Configuring HWE kernel metapackage...${RESET}"
+
+apt-get update || true
+apt-get install -y linux-generic-hwe-26.04 || true
+
+echo -e "${GREEN}✔ HWE kernel metapackage installed.${RESET}"
