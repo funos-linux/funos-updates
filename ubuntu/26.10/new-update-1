@@ -99,7 +99,7 @@ rm -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-resolute.sources
 rm -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-questing.sources
 rm -f /etc/apt/sources.list.d/mozillateam-ubuntu-ppa-noble.sources
 add-apt-repository ppa:mozillateam/ppa -y || true
-apt update || true
+apt-get update || true
 
 echo -e "${GREEN}✔ Mozilla Team PPA updated.${RESET}"
 
@@ -113,3 +113,60 @@ rm -f /usr/share/applications/info.desktop
 rm -f /usr/share/applications/vim.desktop
 
 echo -e "${GREEN}✔ Unused desktop entries removed.${RESET}"
+
+#
+# Update GTK 3.0 settings
+#
+echo -e "${BLUE}→ Updating GTK 3.0 settings...${RESET}"
+
+mkdir -p /etc/xdg/gtk-3.0
+cat > /etc/xdg/gtk-3.0/settings.ini << 'EOF'
+[Settings]
+gtk-theme-name=Numix
+gtk-icon-theme-name=Numix
+gtk-font-name=Sans 10
+gtk-cursor-theme-name=Adwaita
+gtk-cursor-theme-size=0
+gtk-toolbar-style=GTK_TOOLBAR_BOTH
+gtk-toolbar-icon-size=GTK_ICON_SIZE_LARGE_TOOLBAR
+gtk-button-images=1
+gtk-menu-images=1
+gtk-enable-event-sounds=1
+gtk-enable-input-feedback-sounds=1
+gtk-xft-antialias=1
+gtk-xft-hinting=1
+gtk-xft-hintstyle=hintmedium
+gtk-xft-rgba=rgb
+EOF
+chmod 644 /etc/xdg/gtk-3.0/settings.ini
+
+echo -e "${GREEN}✔ GTK 3.0 settings updated.${RESET}"
+
+#
+# Configure LightDM greeter
+#
+echo -e "${BLUE}→ Configuring LightDM greeter...${RESET}"
+
+mkdir -p /etc/lightdm/lightdm-gtk-greeter.conf.d
+cat > /etc/lightdm/lightdm-gtk-greeter.conf.d/50_funos.conf << 'EOF'
+[greeter]
+background = /opt/artwork/wallpaper/100-synthwave-crimson.png
+theme-name = Numix
+icon-theme-name = Papirus
+EOF
+chmod 644 /etc/lightdm/lightdm-gtk-greeter.conf.d/50_funos.conf
+
+echo -e "${GREEN}✔ LightDM greeter configured.${RESET}"
+
+#
+# Configure Kernel Packages: Protect HWE and remove GA
+#
+echo -e "${BLUE}→ Preserving HWE kernel packages and removing GA metapackages...${RESET}"
+
+# Ensure top-level HWE metapackage is present (acts as a safety net)
+apt-get install -y linux-generic-hwe-26.04 || true
+
+# Purge the GA generic packages injected by do-release-upgrade
+apt-get purge -y linux-generic linux-image-generic linux-headers-generic || true
+
+echo -e "${GREEN}✔ Kernel packages configured.${RESET}"
