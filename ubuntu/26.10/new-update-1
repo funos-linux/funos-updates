@@ -164,7 +164,7 @@ echo -e "${GREEN}✔ LightDM greeter configured.${RESET}"
 echo -e "${BLUE}→ Preserving HWE kernel packages and removing GA metapackages...${RESET}"
 
 # Ensure top-level HWE metapackage is present (acts as a safety net)
-apt-get install -y linux-generic-hwe-26.04 || true
+apt-get install --no-install-recommends -y linux-generic-hwe-26.04 || true
 
 # Purge the GA generic packages injected by do-release-upgrade
 apt-get purge -y linux-generic linux-image-generic linux-headers-generic || true
