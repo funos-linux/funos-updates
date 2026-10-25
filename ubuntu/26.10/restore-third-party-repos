@@ -3,54 +3,160 @@
 # Ensure script is run as root
 if [ "$EUID" -ne 0 ]; then
   echo "Please run as root using sudo."
-  exit
+  exit 1
 fi
 
-echo "Restoring Third-Party Repositories..."
+# Visual styling
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
+BOLD='\033[1m'
+RESET='\033[0m'
 
-for file in /etc/apt/sources.list.d/*; do
-    # Skip if not a regular file
+# Determine target Ubuntu codename
+if command -v lsb_release >/dev/null 2>&1; then
+    TARGET_CODENAME=$(lsb_release -cs)
+elif [ -f /etc/os-release ]; then
+    . /etc/os-release
+    TARGET_CODENAME="${UBUNTU_CODENAME:-$VERSION_CODENAME}"
+fi
+TARGET_CODENAME="${TARGET_CODENAME:-stonking}"
+
+echo -e "${BLUE}${BOLD}Restoring Third-Party Repositories for $TARGET_CODENAME...${RESET}\n"
+
+# Helper functions to enable/disable repository sources safely
+disable_source_file() {
+    local file="$1"
+    if [[ "$file" == *.sources ]]; then
+        if grep -qE "^Enabled:" "$file"; then
+            sed -i 's/^Enabled:.*/Enabled: no/g' "$file"
+        else
+            echo "Enabled: no" >> "$file"
+        fi
+    elif [[ "$file" == *.list ]]; then
+        sed -i 's/^deb /# deb /g' "$file"
+        sed -i 's/^deb-src /# deb-src /g' "$file"
+    fi
+}
+
+enable_source_file() {
+    local file="$1"
+    if [[ "$file" == *.sources ]]; then
+        if grep -qE "^Enabled:" "$file"; then
+            sed -i 's/^Enabled:.*/Enabled: yes/g' "$file"
+        fi
+    elif [[ "$file" == *.list ]]; then
+        sed -i 's/^# deb /deb /g' "$file"
+        sed -i 's/^# deb-src /deb-src /g' "$file"
+    fi
+}
+
+declare -a RESTORED_PPAS=()
+declare -a DISABLED_PPAS=()
+declare -a RESTORED_GLOBALS=()
+
+for file in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
     [ -f "$file" ] || continue
     
     filename=$(basename "$file")
     
-    # 1. Skip the core Ubuntu files and the FunOS Mozilla PPA
-    if [[ "$filename" == "ubuntu.sources" ]] || [[ "$filename" == "mozillateam-ubuntu-ppa-stonking.sources" ]]; then
-        echo "Skipping core file: $filename"
+    # 1. Skip core Ubuntu sources and FunOS Mozilla PPA
+    if [[ "$filename" == "ubuntu.sources" ]] || [[ "$filename" == mozillateam-ubuntu-ppa-*.sources ]]; then
+        echo -e "${BLUE}ℹ Skipping core file:${RESET} $filename"
         continue
     fi
     
     # 2. Check if it's a Launchpad PPA
     if grep -qE "ppa\.launchpad(content)?\.net" "$file"; then
-        echo "Found Launchpad PPA in $filename"
+        echo -e "${BLUE}→ Found Launchpad PPA in:${RESET} $filename"
         
-        # Extract the PPA URL
+        # Extract the PPA URL and user/ppa-name
         PPA_URL=$(grep -oE "https?://ppa\.launchpad(content)?\.net/[^/]+/[^/]+" "$file" | head -n 1)
         if [ -n "$PPA_URL" ]; then
-            # Extract the user/ppa-name part
             PPA_NAME=$(echo "$PPA_URL" | sed -E 's|https?://ppa\.launchpad(content)?\.net/||')
             
-            echo "Removing old PPA file: $file"
-            rm -f "$file"
+            # Check if this PPA has a Release file available for the current release
+            CHECK_URL="https://ppa.launchpadcontent.net/${PPA_NAME}/ubuntu/dists/${TARGET_CODENAME}/Release"
+            HTTP_CODE=$(curl -s -L -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$CHECK_URL" 2>/dev/null)
             
-            echo "Re-adding PPA: ppa:$PPA_NAME for Stonking..."
-            add-apt-repository -y "ppa:$PPA_NAME"
+            if [ "$HTTP_CODE" = "200" ]; then
+                echo -e "${GREEN}✔ PPA 'ppa:$PPA_NAME' is available for $TARGET_CODENAME.${RESET}"
+                echo "  Removing old PPA file: $file"
+                rm -f "$file"
+                echo "  Re-adding PPA: ppa:$PPA_NAME..."
+                add-apt-repository -y -n "ppa:$PPA_NAME"
+                RESTORED_PPAS+=("ppa:$PPA_NAME")
+            elif [ "$HTTP_CODE" = "404" ]; then
+                echo -e "${YELLOW}⚠ PPA 'ppa:$PPA_NAME' does not yet support $TARGET_CODENAME (404 Not Found).${RESET}"
+                echo "  Keeping repository disabled so package updates do not fail."
+                disable_source_file "$file"
+                DISABLED_PPAS+=("ppa:$PPA_NAME (not available for $TARGET_CODENAME)")
+            else
+                echo -e "${YELLOW}⚠ Could not verify 'ppa:$PPA_NAME' (HTTP $HTTP_CODE / connection error).${RESET}"
+                echo "  Keeping repository disabled for safety."
+                disable_source_file "$file"
+                DISABLED_PPAS+=("ppa:$PPA_NAME (unreachable / HTTP $HTTP_CODE)")
+            fi
         fi
     else
         # 3. Not a Launchpad PPA, treat as an independent global repository
-        echo "Re-enabling global repository in $filename"
-        if [[ "$filename" == *.list ]]; then
-            sed -i 's/^# deb/deb/g' "$file"
-            sed -i 's/^# deb-src/deb-src/g' "$file"
-        elif [[ "$filename" == *.sources ]]; then
-            sed -i 's/^Enabled: no/Enabled: yes/g' "$file"
-            sed -i 's/^Enabled: false/Enabled: true/g' "$file"
-        fi
+        echo -e "${BLUE}→ Re-enabling global repository in:${RESET} $filename"
+        enable_source_file "$file"
+        RESTORED_GLOBALS+=("$filename")
     fi
 done
 
-# 6. Update apt
-echo "Updating package lists..."
-apt update
+# 4. Update apt package lists with self-healing recovery if 404 occurs
+echo -e "\n${BLUE}${BOLD}Updating package lists...${RESET}"
+APT_LOG=$(mktemp)
+apt-get update > "$APT_LOG" 2>&1
+APT_STATUS=$?
 
-echo "Third-party repositories restored successfully."
+# If apt update failed with missing Release / 404 errors, automatically isolate and disable failing repos
+if [ $APT_STATUS -ne 0 ] && grep -qE "does not have a Release file|404  Not Found" "$APT_LOG"; then
+    echo -e "${YELLOW}⚠ Some repositories failed with 404. Auto-disabling them to keep APT healthy...${RESET}"
+    
+    FAILING_URLS=$(grep -E "does not have a Release file|404  Not Found" "$APT_LOG" | grep -oE "https?://[^ ']+" | sed -E 's|/(dists/.*|Release.*)?$||' | sort -u)
+    for bad_url in $FAILING_URLS; do
+        clean_url="${bad_url%/}"
+        for f in /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list; do
+            [ -f "$f" ] || continue
+            if grep -q "$clean_url" "$f"; then
+                echo -e "${YELLOW}  Disabling incompatible source:${RESET} $(basename "$f")"
+                disable_source_file "$f"
+                DISABLED_PPAS+=("$(basename "$f") (404 during apt update)")
+            fi
+        done
+    done
+    
+    echo -e "${BLUE}Re-updating package lists...${RESET}"
+    apt-get update
+fi
+rm -f "$APT_LOG"
+
+# 5. Display Summary
+echo -e "\n${BOLD}======================================================${RESET}"
+echo -e "${BOLD}           Third-Party Repository Summary${RESET}"
+echo -e "${BOLD}======================================================${RESET}"
+
+if [ ${#RESTORED_PPAS[@]} -gt 0 ] || [ ${#RESTORED_GLOBALS[@]} -gt 0 ]; then
+    echo -e "${GREEN}${BOLD}✔ Restored & Active Repositories:${RESET}"
+    for repo in "${RESTORED_PPAS[@]}"; do
+        echo -e "  ${GREEN}✔${RESET} $repo"
+    done
+    for repo in "${RESTORED_GLOBALS[@]}"; do
+        echo -e "  ${GREEN}✔${RESET} $repo"
+    done
+fi
+
+if [ ${#DISABLED_PPAS[@]} -gt 0 ]; then
+    echo -e "\n${YELLOW}${BOLD}⚠ Disabled Repositories (Not yet available for $TARGET_CODENAME):${RESET}"
+    for repo in "${DISABLED_PPAS[@]}"; do
+        echo -e "  ${YELLOW}⚠${RESET} $repo"
+    done
+    echo -e "\n${BLUE}Note:${RESET} When upstream maintainers add support for $TARGET_CODENAME,"
+    echo -e "      simply re-run this script to automatically re-enable them."
+fi
+
+echo -e "\n${GREEN}${BOLD}Third-party repository check completed.${RESET}\n"
