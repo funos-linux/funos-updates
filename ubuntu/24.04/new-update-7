@@ -1,0 +1,28 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 7 ==${RESET}"
+
+#
+# Enable the 32-bit Architecture
+#
+echo -e "${BLUE}→ Enabling 32-bit architecture...${RESET}"
+
+dpkg --add-architecture i386
+apt-get update || true
+
+echo -e "${GREEN}✔ 32-bit architecture enabled.${RESET}"
