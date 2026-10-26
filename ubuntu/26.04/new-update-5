@@ -1,0 +1,73 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 5 ==${RESET}"
+
+#
+# Update GTK 3.0 settings
+#
+echo -e "${BLUE}→ Updating GTK 3.0 settings...${RESET}"
+
+mkdir -p /etc/xdg/gtk-3.0
+cat > /etc/xdg/gtk-3.0/settings.ini << 'EOF'
+[Settings]
+gtk-theme-name=Numix
+gtk-icon-theme-name=Numix
+gtk-font-name=Sans 10
+gtk-cursor-theme-name=Adwaita
+gtk-cursor-theme-size=0
+gtk-toolbar-style=GTK_TOOLBAR_BOTH
+gtk-toolbar-icon-size=GTK_ICON_SIZE_LARGE_TOOLBAR
+gtk-button-images=1
+gtk-menu-images=1
+gtk-enable-event-sounds=1
+gtk-enable-input-feedback-sounds=1
+gtk-xft-antialias=1
+gtk-xft-hinting=1
+gtk-xft-hintstyle=hintmedium
+gtk-xft-rgba=rgb
+EOF
+chmod 644 /etc/xdg/gtk-3.0/settings.ini
+
+echo -e "${GREEN}✔ GTK 3.0 settings updated.${RESET}"
+
+#
+# Configure LightDM greeter
+#
+echo -e "${BLUE}→ Configuring LightDM greeter...${RESET}"
+
+mkdir -p /etc/lightdm/lightdm-gtk-greeter.conf.d
+cat > /etc/lightdm/lightdm-gtk-greeter.conf.d/50_funos.conf << 'EOF'
+[greeter]
+background = /opt/artwork/wallpaper/100-synthwave-crimson.png
+theme-name = Numix
+icon-theme-name = Papirus
+EOF
+chmod 644 /etc/lightdm/lightdm-gtk-greeter.conf.d/50_funos.conf
+
+echo -e "${GREEN}✔ LightDM greeter configured.${RESET}"
+
+#
+# Enable the 32-bit Architecture
+#
+echo -e "${BLUE}→ Enabling 32-bit architecture...${RESET}"
+
+dpkg --add-architecture i386
+apt-get update || true
+
+echo -e "${GREEN}✔ 32-bit architecture enabled.${RESET}"
+
