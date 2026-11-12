@@ -1,0 +1,108 @@
+#!/bin/bash
+set -e
+
+# Colors
+RED="\033[1;31m"
+GREEN="\033[1;32m"
+YELLOW="\033[1;33m"
+BLUE="\033[1;34m"
+BOLD="\033[1m"
+RESET="\033[0m"
+
+# Must run as root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}Error:${RESET} Please run this update as root."
+    exit 1
+fi
+
+echo -e "${BOLD}${BLUE}== FunOS Update: Step 6 ==${RESET}"
+
+#
+# Update Automated Dynamic JWM Menu configuration
+#
+echo -e "${BLUE}→ Updating Automated Dynamic JWM Menu configuration...${RESET}"
+
+# Update default user profile (/etc/skel)
+SKEL_DIR="/etc/skel"
+mkdir -p "$SKEL_DIR/.config/systemd/user/paths.target.wants"
+
+cat << 'EOF' > "$SKEL_DIR/.config/systemd/user/jwm-menu.service"
+[Unit]
+Description=Update JWM Menu
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'sleep 1 && mjwm --no-backup --silent && { jwm -reload || true; }'
+EOF
+
+cat << 'EOF' > "$SKEL_DIR/.config/systemd/user/jwm-menu.path"
+[Unit]
+Description=Watch application directories for JWM Menu
+
+[Path]
+PathChanged=/usr/share/applications/
+PathChanged=%h/.local/share/applications/
+TriggerLimitIntervalSec=0
+
+[Install]
+WantedBy=paths.target
+EOF
+
+ln -sf "../jwm-menu.path" "$SKEL_DIR/.config/systemd/user/paths.target.wants/jwm-menu.path"
+
+# Apply changes to existing users
+echo -e "${BLUE}→ Applying changes to existing users...${RESET}"
+for user_dir in /home/*; do
+    if [ -d "$user_dir" ]; then
+        user_name=$(basename "$user_dir")
+        user_uid=$(stat -c '%u' "$user_dir")
+        user_gid=$(stat -c '%g' "$user_dir")
+
+        echo -e "${YELLOW}  Updating user: $user_name${RESET}"
+
+        mkdir -p "$user_dir/.config/systemd/user/paths.target.wants"
+
+        cat << 'EOF' > "$user_dir/.config/systemd/user/jwm-menu.service"
+[Unit]
+Description=Update JWM Menu
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'sleep 1 && mjwm --no-backup --silent && { jwm -reload || true; }'
+EOF
+
+        cat << 'EOF' > "$user_dir/.config/systemd/user/jwm-menu.path"
+[Unit]
+Description=Watch application directories for JWM Menu
+
+[Path]
+PathChanged=/usr/share/applications/
+PathChanged=%h/.local/share/applications/
+TriggerLimitIntervalSec=0
+
+[Install]
+WantedBy=paths.target
+EOF
+
+        ln -sf "../jwm-menu.path" "$user_dir/.config/systemd/user/paths.target.wants/jwm-menu.path"
+
+        # Fix ownership
+        chown -R "$user_uid:$user_gid" "$user_dir/.config/systemd" 2>/dev/null || true
+
+        # Restart systemd user path unit if logged in
+        if loginctl list-users --no-legend | grep -q "\b$user_name\b"; then
+            echo -e "${YELLOW}    Reactivating JWM Menu watcher for active session...${RESET}"
+            sudo -u "$user_name" XDG_RUNTIME_DIR="/run/user/$user_uid" systemctl --user daemon-reload || true
+            sudo -u "$user_name" XDG_RUNTIME_DIR="/run/user/$user_uid" systemctl --user reset-failed jwm-menu.service jwm-menu.path || true
+            sudo -u "$user_name" XDG_RUNTIME_DIR="/run/user/$user_uid" systemctl --user enable --now jwm-menu.path || true
+            sudo -u "$user_name" XDG_RUNTIME_DIR="/run/user/$user_uid" systemctl --user restart jwm-menu.path || true
+            sudo -u "$user_name" DISPLAY=:0 mjwm --no-backup --silent 2>/dev/null || true
+            sudo -u "$user_name" DISPLAY=:0 jwm -reload 2>/dev/null || true
+        fi
+    fi
+done
+
+echo -e "${GREEN}✔ Automated Dynamic JWM Menu configuration updated successfully.${RESET}"
+
